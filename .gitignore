@@ -4,3 +4,5 @@ certs
 .coverage
 coverage.xml
 htmlcov/
+.envrc
+venv
