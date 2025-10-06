@@ -31,11 +31,12 @@ class LansforsakringarBankIDLogin:
     So we need to support BankID based login.
     This is not easy, as we need a human in the loop operating the app
     """
-    BASE_URL = 'https://api.lansforsakringar.se'
-    CLIENT_ID = 'LFAB-59IjjFXwGDTAB3K1uRHp9qAp'
+
+    BASE_URL = "https://api.lansforsakringar.se"
+    CLIENT_ID = "LFAB-59IjjFXwGDTAB3K1uRHp9qAp"
     HEADERS = {
-        'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:122.0) Gecko/20100101 Firefox/122.0',
-        'Authorization': f'Atmosphere atmosphere_app_id="{CLIENT_ID}"',
+        "User-Agent": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:122.0) Gecko/20100101 Firefox/122.0",
+        "Authorization": f'Atmosphere atmosphere_app_id="{CLIENT_ID}"',
     }
 
     def __init__(self, personnummer):
@@ -47,11 +48,13 @@ class LansforsakringarBankIDLogin:
 
     def get_token(self) -> Dict[str, Optional[str]]:
         if self.token is None:
-            url = self.BASE_URL + '/security/authentication/g2v2/g2/start'
-            self.session.headers.update({
-                'Content-Type': 'application/json;charset=UTF-8',
-                'Accept': 'application/json'
-            })
+            url = self.BASE_URL + "/security/authentication/g2v2/g2/start"
+            self.session.headers.update(
+                {
+                    "Content-Type": "application/json;charset=UTF-8",
+                    "Accept": "application/json",
+                }
+            )
             req = self.session.post(url, json={"userId": "", "useQRCode": True})
             self.token = req.json()
             if self.token is None or len(self.token) == 0:
@@ -66,8 +69,10 @@ class LansforsakringarBankIDLogin:
         return f"bankid:///?autostarttoken={self.get_token()['autoStartToken']}"
 
     def get_intent(self) -> str:
-        return f"intent:///?autostarttoken={self.get_token()['autoStartToken']}" \
-                "&redirect=null#Intent;scheme=bankid;package=com.bankid.bus;end"
+        return (
+            f"intent:///?autostarttoken={self.get_token()['autoStartToken']}"
+            "&redirect=null#Intent;scheme=bankid;package=com.bankid.bus;end"
+        )
 
     def get_qr_terminal(self) -> str:
         """
@@ -77,11 +82,11 @@ class LansforsakringarBankIDLogin:
         return bankidqr.terminal()
 
     def wait_for_redirect(self) -> requests.cookies.RequestsCookieJar:
-        url = self.BASE_URL + '/security/authentication/g2v2/g2/collect'
+        url = self.BASE_URL + "/security/authentication/g2v2/g2/collect"
         data = {
             "clientId": self.CLIENT_ID,
             "isForCompany": False,
-            "orderRef": self.get_token()['orderRef']
+            "orderRef": self.get_token()["orderRef"],
         }
 
         wait_ended = False
@@ -109,10 +114,8 @@ class LansforsakringarBankIDLogin:
 
 
 class Lansforsakringar:
-    BASE_URL = 'https://secure246.lansforsakringar.se'
-    HEADERS = {
-        'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:122.0) Gecko/20100101 Firefox/122.0'
-    }
+    BASE_URL = "https://secure246.lansforsakringar.se"
+    HEADERS = {"User-Agent": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:122.0) Gecko/20100101 Firefox/122.0"}
 
     def __init__(self, personal_identity_number):
         self.personal_identity_number = personal_identity_number
@@ -125,25 +128,25 @@ class Lansforsakringar:
         self.session.headers.update(self.HEADERS)
 
     def _save_token_and_cookies(self) -> None:
-        with open('lans_token.txt', 'w') as file:
+        with open("lans_token.txt", "w") as file:
             file.write(self.json_token)
 
-        with open('lans_url_token.txt', 'w') as file:
+        with open("lans_url_token.txt", "w") as file:
             file.write(self.url_token)
 
-        with open('lans_cookies.txt', 'w') as file:
+        with open("lans_cookies.txt", "w") as file:
             file.write(json.dumps(self.session.cookies.items()))
 
     def _load_token_and_cookies(self) -> None:
         try:
-            with open('lans_token.txt', 'r') as file:
-                token = file.read().replace('\n', '')
+            with open("lans_token.txt", "r") as file:
+                token = file.read().replace("\n", "")
                 self.json_token = token
 
-            with open('lans_url_token.txt', 'r') as file:
-                self.url_token = file.read().replace('\n', '')
+            with open("lans_url_token.txt", "r") as file:
+                self.url_token = file.read().replace("\n", "")
 
-            with open('lans_cookies.txt', 'r') as file:
+            with open("lans_cookies.txt", "r") as file:
                 self.session.cookies.update(json.loads(file.read()))
         except FileNotFoundError:
             pass
@@ -153,10 +156,10 @@ class Lansforsakringar:
 
         verify = True
 
-        override_ca_bundle = os.getenv('OVERRIDE_CA_BUNDLE')
+        override_ca_bundle = os.getenv("OVERRIDE_CA_BUNDLE")
         if override_ca_bundle:
             verify = override_ca_bundle
-        req = self.session.get(self.BASE_URL + '/im/login/privat', verify=verify)
+        req = self.session.get(self.BASE_URL + "/im/login/privat", verify=verify)
         url = urlparse(req.url)
         if url.path != "/im/im/csw.jsf":
             print(f"Login failed, now on {url.path}")
@@ -166,14 +169,14 @@ class Lansforsakringar:
             return False
 
         # store url token
-        self.url_token = parse_qs(url.query)['_token']
+        self.url_token = parse_qs(url.query)["_token"]
 
         return True
 
     def _parse_json_token(self, body: str) -> str:
         """Parse the JSON token from body."""
 
-        token_match = re.search(r'jsontoken=([\w-]+)', body)
+        token_match = re.search(r"jsontoken=([\w-]+)", body)
         return token_match.group(1)
 
     def _parse_token(self, body: str, use_cache: bool) -> None:
@@ -185,7 +188,7 @@ class Lansforsakringar:
         if use_cache:
             self._save_token_and_cookies()
 
-        logger.debug(f'JSON token set to: {self.json_token} (Old: {old_json_token})')
+        logger.debug(f"JSON token set to: {self.json_token} (Old: {old_json_token})")
 
     def _parse_account_transactions(self, decoded: dict) -> dict:
         """Parse and return list of all account transactions."""
@@ -196,22 +199,22 @@ class Lansforsakringar:
             if "historicalTransactions" in decoded["response"]["transactions"]:
                 for row in decoded["response"]["transactions"]["historicalTransactions"]:
                     transaction = {
-                        'bookKeepingDate': row["bookKeepingDate"],
-                        'transactionDate': row["transactionDate"],
-                        'type': row["transactionType"],
-                        'text': row["transactionText"],
-                        'amount': row["amount"],
-                        'comment': row["comment"]
+                        "bookKeepingDate": row["bookKeepingDate"],
+                        "transactionDate": row["transactionDate"],
+                        "type": row["transactionType"],
+                        "text": row["transactionText"],
+                        "amount": row["amount"],
+                        "comment": row["comment"],
                     }
                     transactions.append(transaction)
             if "upcomingTransactions" in decoded["response"]["transactions"]:
                 for row in decoded["response"]["transactions"]["upcomingTransactions"]:
                     transaction = {
-                        'transactionDate': row["transactionDate"],
-                        'type': row["transactionType"],
-                        'text': row["transactionText"],
-                        'amount': row["amount"],
-                        'comment': row["comment"]
+                        "transactionDate": row["transactionDate"],
+                        "type": row["transactionType"],
+                        "text": row["transactionText"],
+                        "amount": row["amount"],
+                        "comment": row["comment"],
                     }
                     transactions.append(transaction)
             return transactions
@@ -228,13 +231,13 @@ class Lansforsakringar:
 
         verify = True
 
-        override_ca_bundle = os.getenv('OVERRIDE_CA_BUNDLE')
+        override_ca_bundle = os.getenv("OVERRIDE_CA_BUNDLE")
         if override_ca_bundle:
             verify = override_ca_bundle
         self.session.cookies = cookie_jar
-        req = self.session.get(self.BASE_URL + '/im/login/privat', verify=verify)
+        req = self.session.get(self.BASE_URL + "/im/login/privat", verify=verify)
         url = urlparse(req.url)
-        self.url_token = parse_qs(url.query)['_token']
+        self.url_token = parse_qs(url.query)["_token"]
 
         self._parse_token(req.text, use_cache)
 
@@ -248,30 +251,25 @@ class Lansforsakringar:
         """
 
         data = {
-            'customerId': self.personal_identity_number,
-            'responseControl': {
-                'filter': {
-                    'includes': ['ALL']
-                }
-            }
+            "customerId": self.personal_identity_number,
+            "responseControl": {"filter": {"includes": ["ALL"]}},
         }
 
-        headers = {'Content-type': 'application/json',
-                   'Accept': 'application/json',
-                   'CSRFToken': self.json_token}
-        path = '/im/json/overview/getaccounts'
-        req = self.session.post(
-            self.BASE_URL + path,
-            json=data,
-            headers=headers)
+        headers = {
+            "Content-type": "application/json",
+            "Accept": "application/json",
+            "CSRFToken": self.json_token,
+        }
+        path = "/im/json/overview/getaccounts"
+        req = self.session.post(self.BASE_URL + path, json=data, headers=headers)
 
-        logger.debug(f'Transaction request response code {req.status_code}.')
+        logger.debug(f"Transaction request response code {req.status_code}.")
 
         try:
             response = req.json()
-            for account in response['response']['accounts']:
-                self.accounts[account['number']] = account
-                del(self.accounts[account['number']]['number'])
+            for account in response["response"]["accounts"]:
+                self.accounts[account["number"]] = account
+                del self.accounts[account["number"]]["number"]
 
             return self.accounts
         except json.decoder.JSONDecodeError:
@@ -282,15 +280,18 @@ class Lansforsakringar:
             return False
 
     def get_account_transactions(
-            self, account_number: str, from_date: Optional[datetime] = None, to_date: Optional[datetime] = None
-            ) -> list:
+        self,
+        account_number: str,
+        from_date: Optional[datetime] = None,
+        to_date: Optional[datetime] = None,
+    ) -> list:
         """Fetch and return account transactions for account_number."""
         if from_date is not None:
-            from_date_str = from_date.strftime('%Y-%m-%d')
+            from_date_str = from_date.strftime("%Y-%m-%d")
         else:
             from_date_str = ""
         if to_date is not None:
-            to_date_str = to_date.strftime('%Y-%m-%d')
+            to_date_str = to_date.strftime("%Y-%m-%d")
         else:
             to_date_str = ""
         pageNumber = 0
@@ -299,26 +300,25 @@ class Lansforsakringar:
 
         while moreExist:
             data = {
-                'accountNumber': account_number,
+                "accountNumber": account_number,
                 "currentPageNumber": pageNumber,
                 "searchCriterion": {
                     "fromDate": from_date_str,
                     "toDate": to_date_str,
                     "fromAmount": "",
-                    "toAmount": ""
-                }
+                    "toAmount": "",
+                },
             }
 
-            headers = {'Content-type': 'application/json',
-                       'Accept': 'application/json',
-                       'CSRFToken': self.json_token}
-            path = '/im/json/account/getaccounttransactions'
-            req = self.session.post(
-                self.BASE_URL + path,
-                json=data,
-                headers=headers)
+            headers = {
+                "Content-type": "application/json",
+                "Accept": "application/json",
+                "CSRFToken": self.json_token,
+            }
+            path = "/im/json/account/getaccounttransactions"
+            req = self.session.post(self.BASE_URL + path, json=data, headers=headers)
 
-            logger.debug(f'Transaction request response code {req.status_code}.')
+            logger.debug(f"Transaction request response code {req.status_code}.")
             logger.debug(req.text)
 
             # Parse transactions
@@ -344,23 +344,16 @@ class Lansforsakringar:
                 "content": {
                     "includes": [
                         {"include": "AVAILABLE_BALANCE"},
-                        {"include": "DEBIT_ACCOUNT_NAME"}
-                    ]},
-                "filter": {
-                    "includes": [{
-                        "cardStatus": ["ACTIVE", "TEMPORARY_BLOCKED", "NOT_ACTIVATED"]
-                    }]
-                }
-            }
+                        {"include": "DEBIT_ACCOUNT_NAME"},
+                    ]
+                },
+                "filter": {"includes": [{"cardStatus": ["ACTIVE", "TEMPORARY_BLOCKED", "NOT_ACTIVATED"]}]},
+            },
         }
 
-        headers = {'Content-type': 'application/json',
-                   'Accept': '*/*'}
-        path = '/es/card/getcards/3.1'
-        req = self.session.post(
-            self.BASE_URL + path,
-            json=data,
-            headers=headers)
+        headers = {"Content-type": "application/json", "Accept": "*/*"}
+        path = "/es/card/getcards/3.1"
+        req = self.session.post(self.BASE_URL + path, json=data, headers=headers)
 
         data = req.json()
-        return data['response']['cards']
+        return data["response"]["cards"]
