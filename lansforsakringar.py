@@ -34,7 +34,7 @@ class LansforsakringarBankIDLogin:
     BASE_URL = 'https://api.lansforsakringar.se'
     CLIENT_ID = 'LFAB-59IjjFXwGDTAB3K1uRHp9qAp'
     HEADERS = {
-        'User-Agent': 'User-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:93.0) Gecko/20100101 Firefox/93.0',
+        'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:122.0) Gecko/20100101 Firefox/122.0',
         'Authorization': f'Atmosphere atmosphere_app_id="{CLIENT_ID}"',
     }
 
@@ -111,7 +111,7 @@ class LansforsakringarBankIDLogin:
 class Lansforsakringar:
     BASE_URL = 'https://secure246.lansforsakringar.se'
     HEADERS = {
-        'User-Agent': 'User-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:93.0) Gecko/20100101 Firefox/93.0'
+        'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:122.0) Gecko/20100101 Firefox/122.0'
     }
 
     def __init__(self, personal_identity_number):
@@ -173,7 +173,7 @@ class Lansforsakringar:
     def _parse_json_token(self, body: str) -> str:
         """Parse the JSON token from body."""
 
-        token_match = re.search('jsontoken=([\w-]+)', body)
+        token_match = re.search(r'jsontoken=([\w-]+)', body)
         return token_match.group(1)
 
     def _parse_token(self, body: str, use_cache: bool) -> None:
