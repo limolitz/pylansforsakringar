@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pylansforsakringar"
+version = "2.0.0"
+description = "Lansforsakringar Python library (json + scraping)"
+authors = [
+    { name = "Daniel Johansson", email = "donnex@donnex.net" },
+    { name = "Florin Godard", email = "irgend-github@wasmitnetzen.de" }
+]
+license = { text = "BSD-2-Clause" }
+dependencies = [
+    "requests==2.32.3",
+    "urllib3==2.3.0",
+    "pyqrcode==1.2.1"
+]
+
+[project.optional-dependencies]
+test = [
+    "coverage==6.2",
+    "pytest==6.2.4"
+]
