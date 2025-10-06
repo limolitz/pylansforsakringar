@@ -20,5 +20,9 @@ dependencies = [
 [project.optional-dependencies]
 test = [
     "coverage==6.2",
-    "pytest==6.2.4"
+    "pytest==6.2.4",
+    "ruff"
 ]
+
+[tool.ruff]
+line-length = 120

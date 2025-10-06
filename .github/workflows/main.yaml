@@ -22,3 +22,17 @@ jobs:
       - name: Run test suite
         run: |
           make tests
+
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v2
+
+      - uses: astral-sh/ruff-action@v3
+
+      - uses: astral-sh/ruff-action@v3
+        with:
+          args: "format --check --diff"
