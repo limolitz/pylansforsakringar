@@ -2,23 +2,24 @@ import json
 import logging
 import os
 import re
-import requests
 import time
-import pyqrcode
-
-from typing import Union, Optional, Dict
 from datetime import datetime
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import parse_qs, urlparse
+
+import pyqrcode
+import requests
 
 logging.basicConfig()
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.ERROR)
+_logger = logging.getLogger(__name__)
+_logger.setLevel(logging.ERROR)
 ch = logging.StreamHandler()
-logger.addHandler(ch)
+_logger.addHandler(ch)
 
 requests_log = logging.getLogger("urllib3")
-requests_log.setLevel(logging.DEBUG)
+requests_log.setLevel(logging.ERROR)
 requests_log.propagate = True
+
+USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64; rv:143.0) Gecko/20100101 Firefox/143.0"
 
 
 class LansforsakringarError(Exception):
@@ -35,8 +36,10 @@ class LansforsakringarBankIDLogin:
     BASE_URL = "https://api.lansforsakringar.se"
     CLIENT_ID = "LFAB-59IjjFXwGDTAB3K1uRHp9qAp"
     HEADERS = {
-        "User-Agent": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:122.0) Gecko/20100101 Firefox/122.0",
+        "User-Agent": USER_AGENT,
         "Authorization": f'Atmosphere atmosphere_app_id="{CLIENT_ID}"',
+        "Content-Type": "application/json;charset=UTF-8",
+        "Accept": "application/json",
     }
 
     def __init__(self, personnummer):
@@ -44,80 +47,57 @@ class LansforsakringarBankIDLogin:
         self.session = requests.Session()
         self.session.headers.update(self.HEADERS)
 
-        self.token = None
+    def start_auth(self) -> None:
+        url = self.BASE_URL + "/security/login/security-login/v2/start-auth"
+        req = self.session.post(url, json={"useQRCode": True, "authType": "BANKID", "isForCompany": False})
+        # sets cookie sessionId
+        qr_data = req.json()["qrData"]
+        print(self.get_qr_terminal(qr_data))
+        print("Please scan this QR code.")
+        return qr_data
 
-    def get_token(self) -> Dict[str, Optional[str]]:
-        if self.token is None:
-            url = self.BASE_URL + "/security/authentication/g2v2/g2/start"
-            self.session.headers.update(
-                {
-                    "Content-Type": "application/json;charset=UTF-8",
-                    "Accept": "application/json",
-                }
-            )
-            req = self.session.post(url, json={"userId": "", "useQRCode": True})
-            self.token = req.json()
-            if self.token is None or len(self.token) == 0:
-                raise Exception("No token fetched.")
-            if "orderRef" not in self.token.keys():
-                raise Exception(f"No orderRef in token object {self.token}.")
-            if "autoStartToken" not in self.token.keys():
-                raise Exception(f"No autoStartToken in token object {self.token}.")
-        return self.token
-
-    def get_qr_string(self) -> str:
-        return f"bankid:///?autostarttoken={self.get_token()['autoStartToken']}"
-
-    def get_intent(self) -> str:
-        return (
-            f"intent:///?autostarttoken={self.get_token()['autoStartToken']}"
-            "&redirect=null#Intent;scheme=bankid;package=com.bankid.bus;end"
-        )
-
-    def get_qr_terminal(self) -> str:
-        """
-        Get Linux terminal printout of QR Code
-        """
-        bankidqr = pyqrcode.create(self.get_qr_string())
-        return bankidqr.terminal()
-
-    def wait_for_redirect(self) -> requests.cookies.RequestsCookieJar:
-        url = self.BASE_URL + "/security/authentication/g2v2/g2/collect"
-        data = {
-            "clientId": self.CLIENT_ID,
-            "isForCompany": False,
-            "orderRef": self.get_token()["orderRef"],
-        }
-
+    def collect_auth(self, initial_qr_data: str) -> None:
+        url = self.BASE_URL + "/security/login/security-login/v2/collect-auth"
         wait_ended = False
-        step1 = False
-        step2 = False
+        last_qr_data = initial_qr_data
         while not wait_ended:
-            req = self.session.post(url, json=data)
-            resp = req.json()
-            if resp["resultCode"] == "OUTSTANDING_TRANSACTION":
-                if not step1:
-                    step1 = True
+            req = self.session.get(url)
+            data = req.json()
+            _logger.info(data)
+            if "qrData" in data.keys():
+                if data["qrData"] != last_qr_data:
+                    print(self.get_qr_terminal(data["qrData"]))
                     print("Please scan this QR code.")
-            elif resp["resultCode"] == "USER_SIGN":
-                if not step2:
-                    step2 = True
-                    print("Please authenticate in the BankID app.")
-            elif resp["resultCode"] == "COMPLETE":
-                # This call sets a cookie on .lansforsakringar.se, so we just return the whole cookie jar
+                    last_qr_data = data["qrData"]
+            elif data["status"] == "pending":
+                print("Please authenticate in the BankID app...")
+            elif data["status"] == "complete":
+                # Deletes sessionId cookie
+                # Sets a new cookie APIP_TOKEN on .lansforsakringar.se, so we just return the whole cookie jar
                 print("Login successful.")
                 wait_ended = True
             else:
-                print(f"Unkown message: {resp}")
-            time.sleep(2)
-        return req.cookies
+                print(f"Unkown message: {data['status']}")
+            time.sleep(3)
+
+    def get_qr_terminal(self, qr_data: str) -> str:
+        """
+        Get Linux terminal printout of QR Code
+        """
+        bankidqr = pyqrcode.create(qr_data)
+        return bankidqr.terminal()
+
+    def get_cookie(self) -> requests.cookies.RequestsCookieJar:
+        inital_qr = self.start_auth()
+        self.collect_auth(inital_qr)
+        return self.session.cookies
 
 
 class Lansforsakringar:
     BASE_URL = "https://secure246.lansforsakringar.se"
-    HEADERS = {"User-Agent": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:122.0) Gecko/20100101 Firefox/122.0"}
+    HEADERS = {"User-Agent": USER_AGENT}
 
-    def __init__(self, personal_identity_number):
+    def __init__(self, personal_identity_number: str):
         self.personal_identity_number = personal_identity_number
         self.accounts = {}
 
@@ -181,14 +161,12 @@ class Lansforsakringar:
 
     def _parse_token(self, body: str, use_cache: bool) -> None:
         """Parse and save tokens from body."""
-
         old_json_token = self.json_token
-
         self.json_token = self._parse_json_token(body)
         if use_cache:
             self._save_token_and_cookies()
 
-        logger.debug(f"JSON token set to: {self.json_token} (Old: {old_json_token})")
+        _logger.debug(f"JSON token set to: {self.json_token} (Old: {old_json_token})")
 
     def _parse_account_transactions(self, decoded: dict) -> dict:
         """Parse and return list of all account transactions."""
@@ -235,15 +213,16 @@ class Lansforsakringar:
         if override_ca_bundle:
             verify = override_ca_bundle
         self.session.cookies = cookie_jar
-        req = self.session.get(self.BASE_URL + "/im/login/privat", verify=verify)
-        url = urlparse(req.url)
-        self.url_token = parse_qs(url.query)["_token"]
+        resp = self.session.get(self.BASE_URL + "/im/login/privat", verify=verify)
+        url = urlparse(resp.url)
+        self.url_token = parse_qs(url.query)["_token"][0]
+        _logger.debug(f"URL token is {self.url_token}")
 
-        self._parse_token(req.text, use_cache)
+        self._parse_token(resp.text, use_cache)
 
         return True
 
-    def get_accounts(self) -> Union[bool, dict]:
+    def get_accounts(self) -> bool | dict:
         """Fetch bank accounts by using json.
 
         This uses the same json api URL that the browser does when logged in.
@@ -263,7 +242,7 @@ class Lansforsakringar:
         path = "/im/json/overview/getaccounts"
         req = self.session.post(self.BASE_URL + path, json=data, headers=headers)
 
-        logger.debug(f"Transaction request response code {req.status_code}.")
+        _logger.debug(f"Transaction request response code {req.status_code}.")
 
         try:
             response = req.json()
@@ -273,17 +252,17 @@ class Lansforsakringar:
 
             return self.accounts
         except json.decoder.JSONDecodeError:
-            logger.error("JSON Decode error on get_accounts.")
+            _logger.error("JSON Decode error on get_accounts.")
             return False
         except KeyError:
-            logger.error("KeyError on account loading.")
+            _logger.error("KeyError on account loading.")
             return False
 
     def get_account_transactions(
         self,
         account_number: str,
-        from_date: Optional[datetime] = None,
-        to_date: Optional[datetime] = None,
+        from_date: datetime | None = None,
+        to_date: datetime | None = None,
     ) -> list:
         """Fetch and return account transactions for account_number."""
         if from_date is not None:
@@ -318,8 +297,8 @@ class Lansforsakringar:
             path = "/im/json/account/getaccounttransactions"
             req = self.session.post(self.BASE_URL + path, json=data, headers=headers)
 
-            logger.debug(f"Transaction request response code {req.status_code}.")
-            logger.debug(req.text)
+            _logger.debug(f"Transaction request response code {req.status_code}.")
+            _logger.debug(req.text)
 
             # Parse transactions
             decoded = req.json()
@@ -328,7 +307,7 @@ class Lansforsakringar:
             pageNumber += 1
 
             transactions += self._parse_account_transactions(decoded)
-            logger.debug(transactions)
+            _logger.debug(transactions)
 
         return transactions
 
