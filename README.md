@@ -10,13 +10,10 @@ Standard login method is the QR-code based Mobile BankID. To print the QR code t
 
 ```Python
 from lansforsakringar import Lansforsakringar
+PERSONAL_IDENTITY_NUMBER = "201701012393"
 lf = Lansforsakringar(PERSONAL_IDENTITY_NUMBER)
 login = LansforsakringarBankIDLogin(PERSONAL_IDENTITY_NUMBER)
-print(login.get_qr_terminal())
-url = login.wait_for_redirect()
-if url is None:
-    return False
-lf.login(url)
+lf.login(login.get_cookie())
 ```
 
 There is also support for getting the QR code as an image.
