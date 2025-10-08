@@ -1,19 +1,16 @@
-from unittest.mock import Mock, patch
-import pytest
-from requests import Response
 import json
+import time
+from unittest.mock import Mock, call
+
+import pytest
+from requests import Response, Session
 
 from .lansforsakringar import Lansforsakringar, LansforsakringarBankIDLogin
 
-MOCK_PERSONNUMMER = "201701012393"  # https://www.dataportal.se/sv/datasets/6_67959/testpersonnummer
 
-
-def mock_response(data: str, status_code: int) -> Mock:
-    mock_response = Mock(Response)
-    mock_response.text = data
-    mock_response.json.return_value = json.loads(data)
-    mock_response.status_code = status_code
-    return mock_response
+@pytest.fixture
+def mock_personnummer() -> str:
+    return "201701012393"  # https://www.dataportal.se/sv/datasets/6_67959/testpersonnummer
 
 
 def read_test_response_from_file(filename: str, status_code: int = 200) -> Mock:
@@ -21,60 +18,96 @@ def read_test_response_from_file(filename: str, status_code: int = 200) -> Mock:
         return mock_response(f.read(), status_code)
 
 
+@pytest.fixture
+def start_auth_data() -> dict[str, str]:
+    return {
+        "qrData": "bankid.718bd0d5-a47e-11f0-bfb4-d85ed3a2d75f.0.4bc9b199e772162b90fe406b109472b854c87eaedbdfd63f7061bb2700cacb94"
+    }
+
+
+@pytest.fixture
+def collect_auth_step_1() -> dict[str, str]:
+    return {
+        "qrData": "bankid.15b23b0c-a484-11f0-b4d3-d85ed3a2d75f.0.4bc9b199e772162b90fe406b109472b854c87eaedbdfd63f7061bb2700cacb94",
+        "status": "pending",
+        "hintCode": "outstandingTransaction",
+        "resultCode": "OUTSTANDING_TRANSACTION",
+    }
+
+
+@pytest.fixture
+def collect_auth_step_2() -> dict[str, str]:
+    return {"status": "pending", "hintCode": "userSign", "resultCode": "USER_SIGN"}
+
+
+@pytest.fixture
+def collect_auth_step_3() -> dict[str, str]:
+    return {"status": "complete", "resultCode": "COMPLETE", "expiresIn": 0}
+
+
+@pytest.fixture
+def mock_response(response_data: str | dict, status_code=200):
+    mock_response = Mock(Response)
+    if isinstance(response_data, dict):
+        mock_response.text = json.dumps(response_data)
+        mock_response.json.return_value = response_data
+    else:
+        mock_response.text = response_data
+        mock_response.json.return_value = json.loads(response_data)
+    mock_response.status_code = status_code
+    return mock_response
+
+
+@pytest.fixture
+def mock_post(monkeypatch, mock_response):
+    mocked_post = Mock(return_value=mock_response)
+    monkeypatch.setattr(Session, "post", mocked_post)
+    return mocked_post
+
+
 class TestLansforsakringarBankIDLogin:
-    @patch("requests.Session.post")
-    def test_get_token(self, mock_post) -> None:
-        mock_post.return_value = read_test_response_from_file("start_token.json", 200)
-        login_1 = LansforsakringarBankIDLogin(MOCK_PERSONNUMMER)
-        token_1 = login_1.get_token()
+    @pytest.mark.parametrize("response_data", [pytest.lazy_fixture("start_auth_data")])
+    def test_start_auth(self, mock_post, start_auth_data, mock_personnummer) -> None:
+        login = LansforsakringarBankIDLogin(mock_personnummer)
+        assert login.start_auth() == start_auth_data["qrData"]
 
         mock_post.assert_called_once_with(
-            LansforsakringarBankIDLogin.BASE_URL + "/security/authentication/g2v2/g2/start",
-            json={"userId": "", "useQRCode": True},
+            LansforsakringarBankIDLogin.BASE_URL + "/security/login/security-login/v2/start-auth",
+            json={"useQRCode": True, "authType": "BANKID", "isForCompany": False},
         )
 
-        assert isinstance(token_1, dict)
-        assert token_1["autoStartToken"] == "70ada356-e9d8-4863-b8c7-d07057148c17"
-        assert token_1["orderRef"] == "2385dd87-2eef-4f0e-82df-6bbe865c302e"
+    def test_collect_auth(
+        self,
+        monkeypatch,
+        start_auth_data,
+        mock_personnummer,
+        collect_auth_step_1,
+        collect_auth_step_2,
+        collect_auth_step_3,
+    ):
+        response_1 = Mock(Response, **{"json.return_value": collect_auth_step_1})
+        response_2 = Mock(Response, **{"json.return_value": collect_auth_step_2})
+        response_3 = Mock(Response, **{"json.return_value": collect_auth_step_3})
+        mocked_get = Mock(side_effect=[response_1, response_2, response_3])
+        monkeypatch.setattr(Session, "get", mocked_get)
+        monkeypatch.setattr(time, "sleep", lambda x: None)
+        login = LansforsakringarBankIDLogin(mock_personnummer)
+        login.collect_auth(start_auth_data["qrData"])
 
-        mock_post.reset_mock()
-
-        # cache is used
-        token_1 = login_1.get_token()
-        mock_post.assert_not_called()
-
-        mock_post.reset_mock()
-
-        # empty response
-        mock_post.return_value = mock_response("{}", 200)
-        login_2 = LansforsakringarBankIDLogin(MOCK_PERSONNUMMER)
-        with pytest.raises(Exception):
-            login_2.get_token()
-
-        # incomplete response 1
-        mock_post.return_value = mock_response('{"autoStartToken": "test1"}', 200)
-        login_3 = LansforsakringarBankIDLogin(MOCK_PERSONNUMMER)
-        with pytest.raises(Exception):
-            login_3.get_token()
-
-        # incomplete response 2
-        mock_post.return_value = mock_response('{"orderRef": "test1"}', 200)
-        login_4 = LansforsakringarBankIDLogin(MOCK_PERSONNUMMER)
-        with pytest.raises(Exception):
-            login_4.get_token()
+        get_call = call(LansforsakringarBankIDLogin.BASE_URL + "/security/login/security-login/v2/collect-auth")
+        assert mocked_get.call_count == 3
+        mocked_get.assert_has_calls([get_call] * 3)
 
 
 class TestLansforsakringar:
-    @patch("requests.Session.post")
-    def test_get_accounts(self, mock_post) -> None:
-        mock_post.return_value = read_test_response_from_file("getaccounts.txt", 200)
-
-        lans = Lansforsakringar(MOCK_PERSONNUMMER)
+    @pytest.mark.parametrize("response_data", [open("test_data/getaccounts.txt", "r").read()])
+    def test_get_accounts(self, mock_post, mock_personnummer) -> None:
+        lans = Lansforsakringar(mock_personnummer)
         accounts = lans.get_accounts()
         mock_post.assert_called_once_with(
             Lansforsakringar.BASE_URL + "/im/json/overview/getaccounts",
             json={
-                "customerId": MOCK_PERSONNUMMER,
+                "customerId": mock_personnummer,
                 "responseControl": {"filter": {"includes": ["ALL"]}},
             },
             headers={
